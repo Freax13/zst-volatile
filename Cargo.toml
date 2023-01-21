@@ -1,0 +1,10 @@
+[package]
+name = "zst-volatile"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["zst-volatile-macro"]
+
+[dependencies]
+zst-volatile-macro = { path = "zst-volatile-macro" }
