@@ -1,6 +1,7 @@
 use zst_volatile::VolatileStruct;
 
 #[derive(VolatileStruct)]
+#[repr(C)]
 pub struct Child1 {
     field1: u32,
     field2: u32,
@@ -9,6 +10,7 @@ pub struct Child1 {
 }
 
 #[derive(VolatileStruct)]
+#[repr(C)]
 pub struct Child2 {
     field1: u32,
     field2: u32,
@@ -16,6 +18,7 @@ pub struct Child2 {
 }
 
 #[derive(VolatileStruct)]
+#[repr(C)]
 pub struct Parent {
     child1: Child1,
     child2: Child2,
