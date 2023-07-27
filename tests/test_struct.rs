@@ -1,4 +1,4 @@
-use zst_volatile::VolatileStruct;
+use zst_volatile::{Volatile, VolatileStruct};
 
 #[derive(VolatileStruct)]
 #[repr(C)]
@@ -120,4 +120,113 @@ mod tests {
 
         modify(volatile_parent);
     }
+}
+
+#[test]
+fn test_repr_packed() {
+    #[derive(VolatileStruct)]
+    #[repr(C)]
+    #[repr(packed(2))]
+    struct S {
+        a: u8,
+        b: u64,
+        c: u8,
+        d: u32,
+        e: u8,
+    }
+
+    assert_eq!(std::mem::align_of::<S>(), 2);
+    assert_eq!(std::mem::size_of::<S>(), 18);
+
+    let s = &S {
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+        e: 5,
+    };
+    let v = Volatile::from_ref(s);
+
+    let s_addr = s as *const S as usize;
+    let v_addr = v.as_ptr().as_ptr() as usize;
+    assert_eq!(s_addr, v_addr);
+
+    // TODO: Volatile offset tests
+
+    // assert_eq!(
+    //     core::ptr::addr_of!(s.a) as usize - s_addr,
+    //     v.a.as_ptr().as_ptr() as usize - v_addr,
+    //     "field a offset"
+    // );
+    // assert_eq!(
+    //     core::ptr::addr_of!(s.b) as usize - s_addr,
+    //     v.b.as_ptr().as_ptr() as usize - v_addr,
+    //     "field b offset"
+    // );
+    // assert_eq!(
+    //     core::ptr::addr_of!(s.c) as usize - s_addr,
+    //     v.c.as_ptr().as_ptr() as usize - v_addr,
+    //     "field c offset"
+    // );
+    // assert_eq!(
+    //     core::ptr::addr_of!(s.d) as usize - s_addr,
+    //     v.d.as_ptr().as_ptr() as usize - v_addr,
+    //     "field d offset"
+    // );
+}
+
+#[test]
+fn test_repr_align() {
+    #[repr(C)]
+    struct Child1 {
+        c1: u8,
+        c2: u16,
+    }
+
+    #[repr(C)]
+    #[repr(align(8))]
+    struct Child2 {
+        c1: u8,
+        c2: u16,
+    }
+
+    #[repr(C)]
+    #[repr(packed(1))]
+    struct Child3 {
+        c1: u8,
+        c2: u16,
+    }
+
+    #[derive(VolatileStruct)]
+    #[repr(C)]
+    #[repr(packed)]
+    struct Parent1 {
+        p1: Child1,
+        p3: Child3,
+    }
+
+    #[derive(VolatileStruct)]
+    #[repr(C)]
+    struct Parent2 {
+        p1: Child1,
+        p2: Child2,
+        p3: Child3,
+    }
+
+    assert_eq!(std::mem::align_of::<Child1>(), 2);
+    assert_eq!(std::mem::size_of::<Child1>(), 4);
+
+    assert_eq!(std::mem::align_of::<Child2>(), 8);
+    assert_eq!(std::mem::size_of::<Child2>(), 8);
+
+    assert_eq!(std::mem::align_of::<Child3>(), 1);
+    assert_eq!(std::mem::size_of::<Child3>(), 3);
+
+    assert_eq!(std::mem::align_of::<Parent1>(), 1);
+    assert_eq!(std::mem::size_of::<Parent1>(), 7);
+
+    assert_eq!(std::mem::align_of::<Parent2>(), 8);
+    assert_eq!(std::mem::size_of::<Parent2>(), 24);
+
+    // TODO: Voltile offset tests
 }
