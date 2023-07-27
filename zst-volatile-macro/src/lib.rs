@@ -67,7 +67,7 @@ fn parse_repr(attrs: &[Attribute]) -> Result<bool, &'static str> {
         _ => return Err("#[repr(...)] invalid format"),
     };
 
-    // Make sure #[repr(C)] exits
+    // Make sure #[repr(C)] exists
     repr_metas
         .nested
         .iter()
