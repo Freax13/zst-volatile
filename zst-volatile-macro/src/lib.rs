@@ -1,7 +1,10 @@
 use proc_macro::TokenStream;
-use proc_macro2::Span;
+use proc_macro2::{Ident, Literal, Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Attribute, Data, DeriveInput, Error, Lit, Meta, NestedMeta, Result};
+use syn::{
+    parse_macro_input, Attribute, Data, DeriveInput, Error, Lit, Meta, NestedMeta, Result,
+    Visibility,
+};
 
 #[proc_macro_derive(VolatileStruct)]
 pub fn derive_volatile(tts: TokenStream) -> TokenStream {
@@ -17,15 +20,15 @@ pub fn derive_volatile(tts: TokenStream) -> TokenStream {
         Ok(packed) => packed,
         Err(err) => return err.into_compile_error().into(),
     };
-    if packed.is_some() {
-        return Error::new(Span::call_site(), "packed structs are not supported")
-            .into_compile_error()
-            .into();
-    }
 
     let vis = &input.vis;
     let ident = &input.ident;
     let volatile_ident = format_ident!("Volatile{}", ident);
+
+    let (alignment_defs, alignment_ty) = match packed {
+        Some(packed) => generate_packed_wrapper(vis, ident, packed),
+        None => (quote! {}, quote! { A }),
+    };
 
     let mut offset = quote! { ::zst_volatile::offset::Zero };
     let fields = strukt.fields.iter().map(|field| {
@@ -36,27 +39,35 @@ pub fn derive_volatile(tts: TokenStream) -> TokenStream {
 
         // Align the field.
         let field_offset = quote! {
-            ::zst_volatile::offset::Align::<#offset, #ty>
+            ::zst_volatile::offset::Align::<#offset, <#alignment_ty as ::zst_volatile::alignment::Alignment>::Wrapper<#ty>>
         };
 
         // Calculate the minimum offset for the next field.
         offset = quote! {
-            ::zst_volatile::offset::PastField::<#offset, #ty>
+            ::zst_volatile::offset::PastField::<#field_offset, #ty>
         };
 
         quote! {
-            #vis #ident: ::zst_volatile::Volatile<#ty, #field_offset>
+            #vis #ident: ::zst_volatile::Volatile<#ty, #field_offset, #alignment_ty>
         }
     });
 
     quote! {
-        #vis struct #volatile_ident {
+        #vis struct #volatile_ident<A = ::zst_volatile::alignment::Normal>
+        where
+            A: ::zst_volatile::alignment::Alignment,
+        {
             #(#fields,)*
+            _alignment_marker: ::core::marker::PhantomData<A>,
         }
 
         unsafe impl ::zst_volatile::VolatileStruct for #ident {
-            type Struct = #volatile_ident;
+            type Struct<A> = #volatile_ident<A>
+            where
+                A: ::zst_volatile::alignment::Alignment;
         }
+
+        #alignment_defs
     }
     .into()
 }
@@ -110,4 +121,40 @@ fn check_repr(attrs: &[Attribute]) -> Result<Option<usize>> {
     }
 
     Ok(packed)
+}
+
+fn generate_packed_wrapper(
+    vis: &Visibility,
+    ident: &Ident,
+    packed: usize,
+) -> (TokenStream2, TokenStream2) {
+    let alignment_ident = format_ident!("Volatile{}Alignment", ident);
+    let wrapper_ident = format_ident!("Volatile{}AlignmentWrapper", ident);
+    let lit = Literal::usize_unsuffixed(packed);
+
+    let defs = quote! {
+        #vis struct #alignment_ident<T>(T);
+
+        unsafe impl<P> ::zst_volatile::alignment::Alignment for #alignment_ident<P>
+        where
+            P: ::zst_volatile::alignment::Alignment,
+        {
+            type Wrapper<T> = #wrapper_ident<P::Wrapper<T>>;
+
+            #[inline]
+            fn wrap<T>(value: T) -> Self::Wrapper<T> {
+                #wrapper_ident(P::wrap(value))
+            }
+
+            #[inline]
+            fn unwrap<T>(value: Self::Wrapper<T>) -> T {
+                P::unwrap(value.0)
+            }
+        }
+
+        #[repr(C, packed(#lit))]
+        #vis struct #wrapper_ident<T>(T);
+    };
+    let ty = quote! { #alignment_ident::<A> };
+    (defs, ty)
 }
