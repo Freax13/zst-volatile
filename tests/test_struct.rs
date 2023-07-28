@@ -122,111 +122,168 @@ mod tests {
     }
 }
 
+macro_rules! raw_offset {
+    ($base:expr, $field:expr) => {
+        core::ptr::addr_of!($field) as usize - $base
+    };
+}
+
+macro_rules! volatile_offset {
+    ($base:expr, $field:expr) => {
+        $field.as_ptr().as_ptr() as usize - $base
+    };
+}
+
 #[test]
 fn test_repr_packed() {
     #[derive(VolatileStruct)]
     #[repr(C)]
-    #[repr(packed(2))]
-    struct S {
-        a: u8,
-        b: u64,
-        c: u8,
-        d: u32,
-        e: u8,
-    }
-
-    assert_eq!(std::mem::align_of::<S>(), 2);
-    assert_eq!(std::mem::size_of::<S>(), 18);
-
-    let s = &S {
-        a: 1,
-        b: 2,
-        c: 3,
-        d: 4,
-        e: 5,
-    };
-    let v = Volatile::from_ref(s);
-
-    let s_addr = s as *const S as usize;
-    let v_addr = v.as_ptr().as_ptr() as usize;
-    assert_eq!(s_addr, v_addr);
-
-    // TODO: Volatile offset tests
-
-    // assert_eq!(
-    //     core::ptr::addr_of!(s.a) as usize - s_addr,
-    //     v.a.as_ptr().as_ptr() as usize - v_addr,
-    //     "field a offset"
-    // );
-    // assert_eq!(
-    //     core::ptr::addr_of!(s.b) as usize - s_addr,
-    //     v.b.as_ptr().as_ptr() as usize - v_addr,
-    //     "field b offset"
-    // );
-    // assert_eq!(
-    //     core::ptr::addr_of!(s.c) as usize - s_addr,
-    //     v.c.as_ptr().as_ptr() as usize - v_addr,
-    //     "field c offset"
-    // );
-    // assert_eq!(
-    //     core::ptr::addr_of!(s.d) as usize - s_addr,
-    //     v.d.as_ptr().as_ptr() as usize - v_addr,
-    //     "field d offset"
-    // );
-}
-
-#[test]
-fn test_repr_align() {
-    #[repr(C)]
     struct Child1 {
-        c1: u8,
-        c2: u16,
+        x: u8,
+        y: u16,
     }
 
+    #[derive(VolatileStruct)]
     #[repr(C)]
     #[repr(align(8))]
     struct Child2 {
-        c1: u8,
-        c2: u16,
+        x: u8,
+        y: u16,
     }
 
+    #[derive(VolatileStruct)]
     #[repr(C)]
     #[repr(packed(1))]
     struct Child3 {
-        c1: u8,
-        c2: u16,
+        x: u8,
+        y: u16,
     }
 
     #[derive(VolatileStruct)]
     #[repr(C)]
-    #[repr(packed)]
     struct Parent1 {
-        p1: Child1,
-        p3: Child3,
+        a: u8,
+        b: Child1,
+        c: Child2,
+        d: u8,
     }
+
+    assert_eq!(std::mem::align_of::<Parent1>(), 8);
+    assert_eq!(std::mem::size_of::<Parent1>(), 24);
+
+    let p1 = &Parent1 {
+        a: 1,
+        b: Child1 { x: 2, y: 3 },
+        c: Child2 { x: 4, y: 5 },
+        d: 6,
+    };
+    let v1 = Volatile::from_ref(p1);
+    let p1_addr = p1 as *const Parent1 as usize;
+    let v1_addr = v1.as_ptr().as_ptr() as usize;
+
+    assert_eq!(p1_addr, v1_addr);
+    assert_eq!(raw_offset!(p1_addr, p1.a), volatile_offset!(v1_addr, v1.a));
+    assert_eq!(raw_offset!(p1_addr, p1.b), volatile_offset!(v1_addr, v1.b));
+    assert_eq!(raw_offset!(p1_addr, p1.c), volatile_offset!(v1_addr, v1.c));
+    assert_eq!(raw_offset!(p1_addr, p1.d), volatile_offset!(v1_addr, v1.d));
+    assert_eq!(
+        raw_offset!(p1_addr, p1.b.x),
+        volatile_offset!(v1_addr, v1.b.x)
+    );
+    assert_eq!(
+        raw_offset!(p1_addr, p1.b.y),
+        volatile_offset!(v1_addr, v1.b.y)
+    );
+    assert_eq!(
+        raw_offset!(p1_addr, p1.c.x),
+        volatile_offset!(v1_addr, v1.c.x)
+    );
+    assert_eq!(
+        raw_offset!(p1_addr, p1.c.y),
+        volatile_offset!(v1_addr, v1.c.y)
+    );
 
     #[derive(VolatileStruct)]
     #[repr(C)]
+    #[repr(C, packed)] // packed(1)
     struct Parent2 {
-        p1: Child1,
-        p2: Child2,
-        p3: Child3,
+        a: u8,
+        b: Child1,
+        c: Child3,
     }
 
-    assert_eq!(std::mem::align_of::<Child1>(), 2);
-    assert_eq!(std::mem::size_of::<Child1>(), 4);
+    assert_eq!(std::mem::align_of::<Parent2>(), 1);
+    assert_eq!(std::mem::size_of::<Parent2>(), 8);
 
-    assert_eq!(std::mem::align_of::<Child2>(), 8);
-    assert_eq!(std::mem::size_of::<Child2>(), 8);
+    let p2 = &Parent2 {
+        a: 1,
+        b: Child1 { x: 2, y: 3 },
+        c: Child3 { x: 4, y: 5 },
+    };
+    let v2 = Volatile::from_ref(p2);
+    let p2_addr = p2 as *const Parent2 as usize;
+    let v2_addr = v2.as_ptr().as_ptr() as usize;
 
-    assert_eq!(std::mem::align_of::<Child3>(), 1);
-    assert_eq!(std::mem::size_of::<Child3>(), 3);
+    assert_eq!(p2_addr, v2_addr);
+    assert_eq!(raw_offset!(p2_addr, p2.a), volatile_offset!(v2_addr, v2.a));
+    assert_eq!(raw_offset!(p2_addr, p2.b), volatile_offset!(v2_addr, v2.b));
+    assert_eq!(raw_offset!(p2_addr, p2.c), volatile_offset!(v2_addr, v2.c));
+    assert_eq!(
+        raw_offset!(p2_addr, p2.b.x),
+        volatile_offset!(v2_addr, v2.b.x)
+    );
+    assert_eq!(
+        raw_offset!(p2_addr, p2.b.y),
+        volatile_offset!(v2_addr, v2.b.y)
+    );
+    assert_eq!(
+        raw_offset!(p2_addr, p2.c.x),
+        volatile_offset!(v2_addr, v2.c.x)
+    );
+    assert_eq!(
+        raw_offset!(p2_addr, p2.c.y),
+        volatile_offset!(v2_addr, v2.c.y)
+    );
 
-    assert_eq!(std::mem::align_of::<Parent1>(), 1);
-    assert_eq!(std::mem::size_of::<Parent1>(), 7);
+    #[derive(VolatileStruct)]
+    #[repr(C)]
+    #[repr(C, packed(2))]
+    struct Parent3 {
+        a: u8,
+        b: Child1,
+        c: Child3,
+    }
 
-    assert_eq!(std::mem::align_of::<Parent2>(), 8);
-    assert_eq!(std::mem::size_of::<Parent2>(), 24);
+    assert_eq!(std::mem::align_of::<Parent3>(), 2);
+    assert_eq!(std::mem::size_of::<Parent3>(), 10);
 
-    // TODO: Voltile offset tests
+    let p3 = &Parent3 {
+        a: 1,
+        b: Child1 { x: 2, y: 3 },
+        c: Child3 { x: 4, y: 5 },
+    };
+    let v3 = Volatile::from_ref(p3);
+    let p3_addr = p3 as *const Parent3 as usize;
+    let v3_addr = v3.as_ptr().as_ptr() as usize;
+
+    assert_eq!(p3_addr, v3_addr);
+    assert_eq!(raw_offset!(p3_addr, p3.a), volatile_offset!(v3_addr, v3.a));
+    assert_eq!(raw_offset!(p3_addr, p3.b), volatile_offset!(v3_addr, v3.b));
+    assert_eq!(raw_offset!(p3_addr, p3.c), volatile_offset!(v3_addr, v3.c));
+    assert_eq!(
+        raw_offset!(p3_addr, p3.b.x),
+        volatile_offset!(v3_addr, v3.b.x)
+    );
+    assert_eq!(
+        raw_offset!(p3_addr, p3.b.y),
+        volatile_offset!(v3_addr, v3.b.y)
+    );
+    assert_eq!(
+        raw_offset!(p3_addr, p3.c.x),
+        volatile_offset!(v3_addr, v3.c.x)
+    );
+    assert_eq!(
+        raw_offset!(p3_addr, p3.c.y),
+        volatile_offset!(v3_addr, v3.c.y)
+    );
 }
