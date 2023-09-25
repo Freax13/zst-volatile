@@ -1,6 +1,7 @@
 use zst_volatile::VolatileStruct;
 
 #[derive(VolatileStruct)]
+#[repr(C)]
 pub struct Child1 {
     field1: u32,
     field2: u32,
@@ -9,13 +10,15 @@ pub struct Child1 {
 }
 
 #[derive(VolatileStruct)]
+#[repr(C, packed)]
 pub struct Child2 {
-    field1: u32,
+    field1: u8,
     field2: u32,
     field3: u32,
 }
 
 #[derive(VolatileStruct)]
+#[repr(C)]
 pub struct Parent {
     child1: Child1,
     child2: Child2,
@@ -36,7 +39,7 @@ pub fn sum_parent(parent: &VolatileParent) -> u32 {
 }
 
 pub fn sum_child2(child: &VolatileChild2) -> u32 {
-    child.field1.read() + child.field2.read() + child.field3.read()
+    u32::from(child.field1.read()) + child.field2.read() + child.field3.read()
 }
 
 pub fn modify(parent: &mut VolatileParent) {
